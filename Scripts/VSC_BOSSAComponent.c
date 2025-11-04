@@ -298,9 +298,6 @@ class VSC_BOSSAComponent : ScriptComponent
 			return true;
 		}
 		
-		// Check for other sound-producing components
-		// VoiceComponent, etc. could be added here
-		
 		return false;
 	}
 	

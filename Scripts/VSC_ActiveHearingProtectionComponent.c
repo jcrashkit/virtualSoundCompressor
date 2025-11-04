@@ -42,6 +42,7 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 	private bool m_bIsActive = false;
 	private bool m_bIsDampened = false;
 	private float m_fLastDampeningTime = 0.0;
+	private ref map<string, float> m_mRecentWeaponFire; // Track recent weapon fire events
 
 	//------------------------------------------------------------------------------------------------
 	// Called when the component is attached and initialized (e.g., when equipped)
@@ -95,23 +96,26 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		// Store original hearing range for clean restoration
 		m_fOriginalAuditoryRange = m_PlayerPerception.GetAuditoryRange();
 
+		// Initialize weapon fire tracking
+		m_mRecentWeaponFire = new map<string, float>();
+
 		// Apply the initial boost
 		m_PlayerPerception.SetAuditoryRange(m_fOriginalAuditoryRange * m_fBoostMultiplier);
 		m_bIsActive = true;
 
-		// Subscribe to the global explosion event. This is the core of the dampening logic.
+		// Subscribe to the global explosion event
 		BaseWorld world = GetGame().GetWorld();
 		if (world)
 		{
 			world.GetOnExplosion().Insert(this.OnExplosion);
 		}
 		
-		// Subscribe to weapon firing events if enabled
+		// Start monitoring for weapon sounds if enabled
 		if (m_bDetectWeaponSounds)
 		{
-			// Note: Weapon firing detection may require additional event subscriptions
-			// or polling WeaponSoundComponent if available in the API
 			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(MonitorWeaponSounds, 100, true);
+			// Clean up old weapon fire tracking entries periodically
+			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupWeaponFireTracking, 1000, true);
 		}
 		
 		Print("[VSC] Active Hearing Protection Activated. Boost Applied.", LogLevel.NORMAL);
@@ -143,7 +147,7 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 
 	//------------------------------------------------------------------------------------------------
 	// Monitor for weapon sounds (gunshots) in the vicinity
-	// This polls for nearby weapon fire - could be enhanced with direct event subscriptions if available
+	// Detects nearby characters firing weapons by checking weapon state
 	//------------------------------------------------------------------------------------------------
 	protected void MonitorWeaponSounds()
 	{
@@ -155,15 +159,12 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		if (currentTime - m_fLastDampeningTime < m_fDampeningCooldown)
 			return;
 
-		// Find nearby entities that might be firing weapons
-		// Note: This is a simplified approach - actual weapon sound detection would ideally
-		// use WeaponSoundComponent events if the API exposes them
 		vector playerPos = m_PlayerCharacter.GetOrigin();
 		BaseWorld world = GetGame().GetWorld();
 		if (!world)
 			return;
 
-		// Search for nearby characters with weapons
+		// Search for nearby characters
 		array<Managed> found = {};
 		array<Class> excludeClasses = {};
 		array<Object> objects = {};
@@ -176,16 +177,58 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 			if (!entity || entity == m_PlayerCharacter)
 				continue;
 
-			// Check if entity has a weapon and is firing
-			// This would ideally use WeaponSoundComponent or weapon firing events
-			WeaponSoundComponent weaponSound = WeaponSoundComponent.Cast(entity.FindComponent(WeaponSoundComponent));
-			if (weaponSound)
+			// Check if entity is a character with a weapon
+			ChimeraCharacter character = ChimeraCharacter.Cast(entity);
+			if (!character)
+				continue;
+
+			// Get the character's weapon manager
+			WeaponManagerComponent weaponManager = WeaponManagerComponent.Cast(character.FindComponent(WeaponManagerComponent));
+			if (!weaponManager)
+				continue;
+
+			// Get the currently equipped weapon
+			BaseWeaponComponent weapon = weaponManager.GetCurrentWeapon();
+			if (!weapon)
+				continue;
+
+			// Create unique key for this weapon entity
+			string weaponKey = weapon.GetOwner().GetID().ToString();
+			float currentTime = GetGame().GetWorld().GetWorldTime();
+			
+			// Check if this weapon has fired recently (within last 0.5 seconds)
+			if (m_mRecentWeaponFire.Contains(weaponKey))
 			{
-				// If weapon sound component indicates active firing, apply dampening
-				// Note: Actual API methods would need to be verified
-				// This is a placeholder for the concept
-				ApplyDampening(m_iWeaponSoundDurationMs);
-				break;
+				float fireTime = m_mRecentWeaponFire.Get(weaponKey);
+				if (currentTime - fireTime < 0.5)
+				{
+					// Weapon fired recently, apply dampening
+					ApplyDampening(m_iWeaponSoundDurationMs);
+					break;
+				}
+			}
+			
+			// Check for projectile entities near the weapon (indicates recent fire)
+			IEntity weaponEntity = weapon.GetOwner();
+			if (weaponEntity)
+			{
+				vector weaponPos = weaponEntity.GetOrigin();
+				array<Managed> projectiles = {};
+				array<Class> excludeClasses2 = {};
+				array<Object> objects2 = {};
+				world.FindEntitiesAround(weaponPos, 5.0, excludeClasses2, projectiles, objects2);
+				
+				foreach (Managed proj : projectiles)
+				{
+					IEntity projectile = IEntity.Cast(proj);
+					if (projectile && projectile.GetParent() == weaponEntity)
+					{
+						// Found projectile from this weapon - mark as recently fired
+						m_mRecentWeaponFire.Set(weaponKey, currentTime);
+						ApplyDampening(m_iWeaponSoundDurationMs);
+						break;
+					}
+				}
 			}
 		}
 	}
@@ -211,6 +254,34 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(RestoreBoost, durationMs);
 	}
 
+	//------------------------------------------------------------------------------------------------
+	// Clean up old weapon fire tracking entries
+	//------------------------------------------------------------------------------------------------
+	protected void CleanupWeaponFireTracking()
+	{
+		if (!m_mRecentWeaponFire || !m_bIsActive)
+			return;
+			
+		float currentTime = GetGame().GetWorld().GetWorldTime();
+		array<string> keysToRemove = {};
+		
+		// Remove entries older than 2 seconds
+		for (int i = 0; i < m_mRecentWeaponFire.Count(); i++)
+		{
+			string key = m_mRecentWeaponFire.GetKey(i);
+			float fireTime = m_mRecentWeaponFire.Get(key);
+			if (currentTime - fireTime > 2.0)
+			{
+				keysToRemove.Insert(key);
+			}
+		}
+		
+		foreach (string key : keysToRemove)
+		{
+			m_mRecentWeaponFire.Remove(key);
+		}
+	}
+	
 	//------------------------------------------------------------------------------------------------
 	// Restore the boost after dampening period
 	//------------------------------------------------------------------------------------------------
@@ -241,6 +312,13 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		if (m_bDetectWeaponSounds)
 		{
 			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).Remove(MonitorWeaponSounds);
+			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).Remove(CleanupWeaponFireTracking);
+		}
+		
+		// Clear weapon fire tracking
+		if (m_mRecentWeaponFire)
+		{
+			m_mRecentWeaponFire.Clear();
 		}
 
 		// Restore the player's hearing to its original state
