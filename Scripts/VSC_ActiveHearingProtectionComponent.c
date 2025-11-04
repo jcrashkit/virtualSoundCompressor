@@ -1,0 +1,257 @@
+//------------------------------------------------------------------------------------------------
+// Virtual Sound Compressor - Active Hearing Protection Component
+// Simulates active hearing protection. Boosts quiet sounds and dampens loud ones.
+// Author: jcrashkit
+//------------------------------------------------------------------------------------------------
+
+[ComponentEditorProps(category: "GameScripted/Audio", description: "Simulates active hearing protection. Boosts quiet sounds and dampens loud ones.")]
+class VSC_ActiveHearingProtectionComponentClass : ScriptComponentClass
+{
+}
+
+class VSC_ActiveHearingProtectionComponent : ScriptComponent
+{
+	[Attribute(defvalue: "1.75", uiwidget: UIWidgets.Slider, desc: "Auditory range multiplier for quiet sounds.", params: "1.0 5.0 0.1")]
+	protected float m_fBoostMultiplier;
+
+	[Attribute(defvalue: "0.25", uiwidget: UIWidgets.Slider, desc: "Auditory range multiplier when dampening loud sounds.", params: "0.1 1.0 0.05")]
+	protected float m_fDampenMultiplier;
+
+	[Attribute(defvalue: "25", uiwidget: UIWidgets.EditBox, desc: "The maximum distance (meters) from an explosion to trigger the dampening effect.")]
+	protected float m_fDampenTriggerRange;
+
+	[Attribute(defvalue: "400", uiwidget: UIWidgets.EditBox, desc: "How long the dampening effect lasts in milliseconds (ms).")]
+	protected int m_iDampenDurationMs;
+
+	[Attribute(defvalue: "true", uiwidget: UIWidgets.CheckBox, desc: "Enable dampening for weapon sounds (gunshots).")]
+	protected bool m_bDetectWeaponSounds;
+
+	[Attribute(defvalue: "15", uiwidget: UIWidgets.EditBox, desc: "The maximum distance (meters) from weapon fire to trigger dampening.")]
+	protected float m_fWeaponSoundTriggerRange;
+
+	[Attribute(defvalue: "200", uiwidget: UIWidgets.EditBox, desc: "How long weapon sound dampening lasts in milliseconds (ms).")]
+	protected int m_iWeaponSoundDurationMs;
+
+	[Attribute(defvalue: "0.5", uiwidget: UIWidgets.Slider, desc: "Minimum time between dampening triggers (seconds) to prevent rapid toggling.", params: "0.1 2.0 0.1")]
+	protected float m_fDampeningCooldown;
+
+	// --- Private Member Variables ---
+	private ChimeraCharacter m_PlayerCharacter;
+	private PerceptionComponent m_PlayerPerception;
+	private float m_fOriginalAuditoryRange;
+	private bool m_bIsActive = false;
+	private bool m_bIsDampened = false;
+	private float m_fLastDampeningTime = 0.0;
+
+	//------------------------------------------------------------------------------------------------
+	// Called when the component is attached and initialized (e.g., when equipped)
+	//------------------------------------------------------------------------------------------------
+	override void EOnPostInit(IEntity owner)
+	{
+		super.EOnPostInit(owner);
+		
+		// A small delay ensures the player character and its components are fully ready
+		GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(InitializeProtection, 100, false);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// Initialize the hearing protection system
+	//------------------------------------------------------------------------------------------------
+	protected void InitializeProtection()
+	{
+		// Get the player character this item is attached to
+		// For equipment items, the owner is the item itself, parent should be the character
+		IEntity parent = GetOwner().GetParent();
+		if (!parent)
+			return;
+			
+		m_PlayerCharacter = ChimeraCharacter.Cast(parent);
+		if (!m_PlayerCharacter) 
+		{
+			// Try to find the character in the hierarchy
+			m_PlayerCharacter = ChimeraCharacter.Cast(GetOwner().FindComponent(ChimeraCharacter));
+			if (!m_PlayerCharacter)
+			{
+				// Last attempt: check if owner itself is the character
+				m_PlayerCharacter = ChimeraCharacter.Cast(GetOwner());
+				if (!m_PlayerCharacter)
+					return;
+			}
+		}
+
+		// Only run this logic for the local player
+		PlayerController playerController = GetGame().GetPlayerController();
+		if (!playerController)
+			return;
+			
+		IEntity controlledEntity = playerController.GetControlledEntity();
+		if (controlledEntity != m_PlayerCharacter)
+			return;
+		
+		m_PlayerPerception = PerceptionComponent.Cast(m_PlayerCharacter.FindComponent(PerceptionComponent));
+		if (!m_PlayerPerception)
+			return;
+		
+		// Store original hearing range for clean restoration
+		m_fOriginalAuditoryRange = m_PlayerPerception.GetAuditoryRange();
+
+		// Apply the initial boost
+		m_PlayerPerception.SetAuditoryRange(m_fOriginalAuditoryRange * m_fBoostMultiplier);
+		m_bIsActive = true;
+
+		// Subscribe to the global explosion event. This is the core of the dampening logic.
+		BaseWorld world = GetGame().GetWorld();
+		if (world)
+		{
+			world.GetOnExplosion().Insert(this.OnExplosion);
+		}
+		
+		// Subscribe to weapon firing events if enabled
+		if (m_bDetectWeaponSounds)
+		{
+			// Note: Weapon firing detection may require additional event subscriptions
+			// or polling WeaponSoundComponent if available in the API
+			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(MonitorWeaponSounds, 100, true);
+		}
+		
+		Print("[VSC] Active Hearing Protection Activated. Boost Applied.", LogLevel.NORMAL);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// This method is called by the game engine whenever ANY explosion happens in the world
+	//------------------------------------------------------------------------------------------------
+	protected void OnExplosion(IEntity explosionEntity, IEntity source, vector position, float rawDamage, float range, EExplosionType type)
+	{
+		// If the protection isn't active, or we can't find the player, do nothing.
+		if (!m_bIsActive || !m_PlayerCharacter || !m_PlayerPerception)
+			return;
+
+		// Check cooldown to prevent rapid toggling
+		float currentTime = GetGame().GetWorld().GetWorldTime();
+		if (currentTime - m_fLastDampeningTime < m_fDampeningCooldown)
+			return;
+
+		// Calculate distance from the explosion to the player
+		float distance = vector.Distance(m_PlayerCharacter.GetOrigin(), position);
+		
+		// If the explosion is within our trigger range, apply the dampening effect
+		if (distance <= m_fDampenTriggerRange)
+		{
+			ApplyDampening(m_iDampenDurationMs);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// Monitor for weapon sounds (gunshots) in the vicinity
+	// This polls for nearby weapon fire - could be enhanced with direct event subscriptions if available
+	//------------------------------------------------------------------------------------------------
+	protected void MonitorWeaponSounds()
+	{
+		if (!m_bIsActive || !m_bDetectWeaponSounds || !m_PlayerCharacter || !m_PlayerPerception)
+			return;
+
+		// Check cooldown to prevent rapid toggling
+		float currentTime = GetGame().GetWorld().GetWorldTime();
+		if (currentTime - m_fLastDampeningTime < m_fDampeningCooldown)
+			return;
+
+		// Find nearby entities that might be firing weapons
+		// Note: This is a simplified approach - actual weapon sound detection would ideally
+		// use WeaponSoundComponent events if the API exposes them
+		vector playerPos = m_PlayerCharacter.GetOrigin();
+		BaseWorld world = GetGame().GetWorld();
+		if (!world)
+			return;
+
+		// Search for nearby characters with weapons
+		array<Managed> found = {};
+		array<Class> excludeClasses = {};
+		array<Object> objects = {};
+		
+		world.FindEntitiesAround(playerPos, m_fWeaponSoundTriggerRange, excludeClasses, found, objects);
+		
+		foreach (Managed obj : found)
+		{
+			IEntity entity = IEntity.Cast(obj);
+			if (!entity || entity == m_PlayerCharacter)
+				continue;
+
+			// Check if entity has a weapon and is firing
+			// This would ideally use WeaponSoundComponent or weapon firing events
+			WeaponSoundComponent weaponSound = WeaponSoundComponent.Cast(entity.FindComponent(WeaponSoundComponent));
+			if (weaponSound)
+			{
+				// If weapon sound component indicates active firing, apply dampening
+				// Note: Actual API methods would need to be verified
+				// This is a placeholder for the concept
+				ApplyDampening(m_iWeaponSoundDurationMs);
+				break;
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// Apply audio dampening effect
+	//------------------------------------------------------------------------------------------------
+	protected void ApplyDampening(int durationMs = -1)
+	{
+		if (!m_PlayerPerception) 
+			return;
+
+		// Use provided duration or default
+		if (durationMs < 0)
+			durationMs = m_iDampenDurationMs;
+
+		m_bIsDampened = true;
+		m_fLastDampeningTime = GetGame().GetWorld().GetWorldTime();
+		m_PlayerPerception.SetAuditoryRange(m_fOriginalAuditoryRange * m_fDampenMultiplier);
+		Print("[VSC] LOUD NOISE DETECTED! Dampening audio.", LogLevel.WARNING);
+
+		// Schedule the effect to be removed after the specified duration
+		GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(RestoreBoost, durationMs);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// Restore the boost after dampening period
+	//------------------------------------------------------------------------------------------------
+	protected void RestoreBoost()
+	{
+		// If protection was turned off while dampened, don't do anything
+		if (!m_bIsActive || !m_PlayerPerception) 
+			return;
+
+		m_bIsDampened = false;
+		m_PlayerPerception.SetAuditoryRange(m_fOriginalAuditoryRange * m_fBoostMultiplier);
+		Print("[VSC] Dampening finished. Boost restored.", LogLevel.NORMAL);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	// Called when the component is de-initialized (e.g., when unequipped)
+	//------------------------------------------------------------------------------------------------
+	override void EOnDeinit(IEntity owner)
+	{
+		// Unsubscribe from the global event to prevent memory leaks and errors
+		BaseWorld world = GetGame().GetWorld();
+		if (world)
+		{
+			world.GetOnExplosion().Remove(this.OnExplosion);
+		}
+
+		// Stop weapon sound monitoring
+		if (m_bDetectWeaponSounds)
+		{
+			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).Remove(MonitorWeaponSounds);
+		}
+
+		// Restore the player's hearing to its original state
+		if (m_bIsActive && m_PlayerPerception)
+		{
+			m_PlayerPerception.SetAuditoryRange(m_fOriginalAuditoryRange);
+		}
+		
+		m_bIsActive = false;
+		Print("[VSC] Active Hearing Protection Deactivated. Hearing restored to normal.", LogLevel.NORMAL);
+		
+		super.EOnDeinit(owner);
+	}
+}

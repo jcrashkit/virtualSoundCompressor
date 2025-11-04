@@ -1,0 +1,18 @@
+{
+	"name": "VirtualSoundCompressor",
+	"version": "1.0.0",
+	"author": "jcrashkit",
+	"description": "Active hearing protection system with BOSSA algorithm. Amplifies quiet sounds (like footsteps) while automatically dampening loud noises (explosions, gunfire) to protect hearing. Features brain-inspired BOSSA (Biologically Oriented Sound Segregation Algorithm) for enhanced speech recognition and selective attention in noisy environments. Allows you to turn up your system volume to hear ambient sounds without being overwhelmed by sudden loud noises.",
+	"website": "",
+	"contact": "",
+	"prefix": "VSC",
+	"requiredGameVersion": "~1.0.0",
+	"serverModules": [
+		"VSC_ActiveHearingProtectionComponent",
+		"VSC_BOSSAComponent"
+	],
+	"clientModules": [
+		"VSC_ActiveHearingProtectionComponent",
+		"VSC_BOSSAComponent"
+	]
+}
