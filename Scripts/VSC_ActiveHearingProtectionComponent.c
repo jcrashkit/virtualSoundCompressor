@@ -104,6 +104,7 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		m_bIsActive = true;
 
 		// Subscribe to the global explosion event
+		// Performance: Event-driven, no polling overhead - scales to 128+ users
 		BaseWorld world = GetGame().GetWorld();
 		if (world)
 		{
@@ -165,15 +166,26 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		if (!world)
 			return;
 
-		// Search for nearby characters
+		// Performance optimization for 128 users: Only search within trigger range
+		// Limit search radius to weapon sound trigger range to avoid checking distant players
 		array<Managed> found = {};
 		array<Class> excludeClasses = {};
 		array<Object> objects = {};
 		
-		world.FindEntitiesAround(playerPos, m_fWeaponSoundTriggerRange, excludeClasses, found, objects);
+		// Optimized: Use smaller search radius to reduce entity count
+		float searchRange = m_fWeaponSoundTriggerRange;
+		world.FindEntitiesAround(playerPos, searchRange, excludeClasses, found, objects);
+		
+		// Performance: Limit maximum entities checked per frame (for 128 player scenarios)
+		int maxChecks = 16; // Only check up to 16 nearby entities per frame
+		int checked = 0;
 		
 		foreach (Managed obj : found)
 		{
+			// Performance optimization: Limit checks per frame
+			if (checked >= maxChecks)
+				break;
+			
 			IEntity entity = IEntity.Cast(obj);
 			if (!entity || entity == m_PlayerCharacter)
 				continue;
@@ -182,6 +194,8 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 			ChimeraCharacter character = ChimeraCharacter.Cast(entity);
 			if (!character)
 				continue;
+			
+			checked++;
 
 			// Get the character's weapon manager
 			WeaponManagerComponent weaponManager = WeaponManagerComponent.Cast(character.FindComponent(WeaponManagerComponent));

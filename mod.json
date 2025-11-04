@@ -8,10 +8,13 @@
 	"prefix": "VSC",
 	"requiredGameVersion": "~1.0.0",
 	"serverModules": [
+		"VSC_MainComponent",
+		"VSC_HeadgearManagerComponent",
 		"VSC_ActiveHearingProtectionComponent",
 		"VSC_BOSSAComponent"
 	],
 	"clientModules": [
+		"VSC_MainComponent",
 		"VSC_ActiveHearingProtectionComponent",
 		"VSC_BOSSAComponent"
 	]
