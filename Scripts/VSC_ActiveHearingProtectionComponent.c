@@ -111,9 +111,10 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		}
 		
 		// Start monitoring for weapon sounds if enabled
+		// Using 50ms polling for lower latency (was 100ms)
 		if (m_bDetectWeaponSounds)
 		{
-			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(MonitorWeaponSounds, 100, true);
+			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(MonitorWeaponSounds, 50, true);
 			// Clean up old weapon fire tracking entries periodically
 			GetGame().GetCallqueue(CALL_CATEGORY_GAMEPLAY).CallLater(CleanupWeaponFireTracking, 1000, true);
 		}
@@ -196,37 +197,45 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 			string weaponKey = weapon.GetOwner().GetID().ToString();
 			float currentTime = GetGame().GetWorld().GetWorldTime();
 			
-			// Check if this weapon has fired recently (within last 0.5 seconds)
+			// Check if this weapon has fired recently (within last 0.3 seconds for faster detection)
 			if (m_mRecentWeaponFire.Contains(weaponKey))
 			{
 				float fireTime = m_mRecentWeaponFire.Get(weaponKey);
-				if (currentTime - fireTime < 0.5)
+				if (currentTime - fireTime < 0.3)
 				{
-					// Weapon fired recently, apply dampening
+					// Weapon fired recently, apply dampening immediately
 					ApplyDampening(m_iWeaponSoundDurationMs);
 					break;
 				}
 			}
 			
-			// Check for projectile entities near the weapon (indicates recent fire)
+			// Optimized: Use lightweight projectile detection for immediate response
+			// Check for projectiles in a small radius around weapon position (faster detection)
 			IEntity weaponEntity = weapon.GetOwner();
 			if (weaponEntity)
 			{
 				vector weaponPos = weaponEntity.GetOrigin();
-				array<Managed> projectiles = {};
-				array<Class> excludeClasses2 = {};
-				array<Object> objects2 = {};
-				world.FindEntitiesAround(weaponPos, 5.0, excludeClasses2, projectiles, objects2);
+				float distToPlayer = vector.Distance(playerPos, weaponPos);
 				
-				foreach (Managed proj : projectiles)
+				// Only check if weapon is within trigger range
+				if (distToPlayer < m_fWeaponSoundTriggerRange)
 				{
-					IEntity projectile = IEntity.Cast(proj);
-					if (projectile && projectile.GetParent() == weaponEntity)
+					// Check for projectiles in small radius (optimized search - 2m radius)
+					array<Managed> projectiles = {};
+					array<Class> excludeClasses2 = {};
+					array<Object> objects2 = {};
+					world.FindEntitiesAround(weaponPos, 2.0, excludeClasses2, projectiles, objects2);
+					
+					foreach (Managed proj : projectiles)
 					{
-						// Found projectile from this weapon - mark as recently fired
-						m_mRecentWeaponFire.Set(weaponKey, currentTime);
-						ApplyDampening(m_iWeaponSoundDurationMs);
-						break;
+						IEntity projectile = IEntity.Cast(proj);
+						if (projectile)
+						{
+							// Found projectile near weapon - mark as recently fired and trigger immediately
+							m_mRecentWeaponFire.Set(weaponKey, currentTime);
+							ApplyDampening(m_iWeaponSoundDurationMs);
+							break;
+						}
 					}
 				}
 			}
