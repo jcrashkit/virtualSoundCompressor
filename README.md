@@ -193,6 +193,18 @@ The system is optimized for **128 concurrent players**:
 3. **Check Ranges**: Ensure explosions/weapons are within trigger ranges
 4. **Cooldown**: Check if cooldown period is preventing triggers
 
+### Compilation Errors from Other Mods
+
+If you see compilation errors like "Missing script declaration of class 'WeatherStateTransitionNode'" or similar:
+
+1. **This is NOT from VSC mod**: VSC code doesn't reference weather or other external classes
+2. **Check other mods**: Disable other mods one by one to find the culprit
+3. **Mod conflicts**: Some mods may have conflicting dependencies
+4. **Workbench cache**: Try clearing Workbench cache or restarting Workbench
+5. **Verify VSC only**: Test with only VSC mod enabled to confirm it's not the issue
+
+**VSC mod is standalone** and doesn't require any external dependencies beyond the base Arma Reforger game.
+
 ---
 
 ## Advanced Configuration
@@ -229,12 +241,25 @@ virtualSoundCompressor/
 
 ---
 
+## Game Master Guide
+
+For detailed instructions on manually attaching components to headgear items in the Workbench, see **[GAMEMASTER_GUIDE.md](GAMEMASTER_GUIDE.md)**.
+
+This guide covers:
+- Step-by-step component attachment
+- Configuration options
+- Examples for different headgear types
+- Best practices and troubleshooting
+
+---
+
 ## Support
 
 For issues or questions:
 - Check server logs for `[VSC]` and `[VSC Manager]` messages
 - Verify component attachment in Workbench
 - Ensure mod is enabled in server configuration
+- See GAMEMASTER_GUIDE.md for manual attachment help
 
 ---
 

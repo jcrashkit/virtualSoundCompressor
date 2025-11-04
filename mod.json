@@ -9,13 +9,9 @@
 	"requiredGameVersion": "~1.0.0",
 	"serverModules": [
 		"VSC_MainComponent",
-		"VSC_HeadgearManagerComponent",
-		"VSC_ActiveHearingProtectionComponent",
-		"VSC_BOSSAComponent"
+		"VSC_HeadgearManagerComponent"
 	],
 	"clientModules": [
-		"VSC_MainComponent",
-		"VSC_ActiveHearingProtectionComponent",
-		"VSC_BOSSAComponent"
+		"VSC_MainComponent"
 	]
 }

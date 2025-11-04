@@ -8,9 +8,9 @@ GameProject {
   GameProjectConfig PC {
    ScriptProjectManagerSettings ScriptProjectManagerSettings "{AC4BE58770485E4B}" {
     Modules {
-     ScriptModulePathClass virtualSoundCompressor {
+     ScriptModulePathClass VirtualSoundCompressor {
       Paths {
-      "{5BE22D4A02273A1F}Scripts" "{C2AB119AABA307D6}UI"
+      "{5BE22D4A02273A1F}Scripts"
       }
      }
     }
