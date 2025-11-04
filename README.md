@@ -1,4 +1,4 @@
-# Virtual Sound Compressor (VSC)
+# Virtual Sound Compressor (VSC) https://reforger.armaplatform.com/workshop/A1B2C3D4E5F6A7B8-VirtualSoundCompressor
 
 Active hearing protection system with BOSSA algorithm for Arma Reforger. Automatically amplifies quiet sounds (like footsteps) while dampening loud noises (explosions, gunfire) to protect hearing. Features brain-inspired BOSSA (Biologically Oriented Sound Segregation Algorithm) for enhanced speech recognition and selective attention in noisy environments.
 
