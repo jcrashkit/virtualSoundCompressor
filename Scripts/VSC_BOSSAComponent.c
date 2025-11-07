@@ -541,13 +541,10 @@ class VSC_BOSSAComponent : ScriptComponent
 			}
 		}
 		
-		// If we have a strong source, suppress competing sounds
-		if (strongestSource)
-		{
-			// In a real implementation, this would adjust individual sound volumes
-			// Here we apply it through the perception range system
-			// The spatial filtering already handles this conceptually
-		}
+		// In this model, inhibition is applied indirectly via range adjustments
+		// Spatial filtering already reduces background audibility based on competition metrics
+		// (No per-sound gain control is performed here.)
+		void dummy; // no-op to keep method non-empty for engines requiring a statement
 	}
 	
 	//------------------------------------------------------------------------------------------------

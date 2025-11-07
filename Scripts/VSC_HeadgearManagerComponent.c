@@ -5,7 +5,7 @@
 // Author: jcrashkit
 //------------------------------------------------------------------------------------------------
 
-[ComponentEditorProps(category: "GameScripted/Audio", description: "Automatically attaches VSC hearing protection to headgear items. Optimized for 128 concurrent users.")]
+[ComponentEditorProps(category: "GameScripted/Audio", description: "Automatically attaches VSC hearing protection and BOSSA to headgear items. Optimized for 128 concurrent users.")]
 class VSC_HeadgearManagerComponentClass : ScriptedGameComponentClass
 {
 }
@@ -17,6 +17,11 @@ class VSC_HeadgearManagerComponent : ScriptedGameComponent
 	
 	// Performance: Cache component class to avoid repeated lookups
 	private VSC_ActiveHearingProtectionComponentClass m_ComponentClass;
+	private VSC_BOSSAComponentClass m_BOSSAClass;
+
+	// Consolidated setup: single toggle controls auto-attach of both protection and BOSSA
+	[Attribute(defvalue: "true", uiwidget: UIWidgets.CheckBox, desc: "Auto-attach VSC components (Protection + BOSSA) to headgear items (server-side).")]
+	protected bool m_bAutoAttach;
 	
 	//------------------------------------------------------------------------------------------------
 	override void OnPostInit(IEntity owner)
@@ -24,8 +29,9 @@ class VSC_HeadgearManagerComponent : ScriptedGameComponent
 		super.OnPostInit(owner);
 		
 		m_mProcessedItems = new map<string, bool>();
-		// Component class will be created when needed
+		// Component classes will be created when needed
 		m_ComponentClass = null;
+		m_BOSSAClass = null;
 		
 		// Start monitoring for headgear equipment changes
 		// Use staggered polling to distribute load across frames (performance optimization)
@@ -96,14 +102,10 @@ class VSC_HeadgearManagerComponent : ScriptedGameComponent
 		// Get headgear - try multiple methods to find it
 		IEntity headgear = null;
 		
-		// Try InventorySlots.HEADGEAR if available
-		if (inventory.GetItemInSlot)
-		{
-			// Try common headgear slot numbers
-			headgear = inventory.GetItemInSlot(1); // Common headgear slot
-			if (!headgear)
-				headgear = inventory.GetItemInSlot(2);
-		}
+		// Try common headgear slots first (InventorySlots.HEADGEAR varies per project)
+		headgear = inventory.GetItemInSlot(1);
+		if (!headgear)
+			headgear = inventory.GetItemInSlot(2);
 		
 		// Fallback: search inventory for headgear items by name
 		if (!headgear)
@@ -121,20 +123,18 @@ class VSC_HeadgearManagerComponent : ScriptedGameComponent
 		if (m_mProcessedItems.Contains(itemID) && m_mProcessedItems.Get(itemID))
 			return;
 		
-		// Check if component already exists
-		VSC_ActiveHearingProtectionComponent existingComp = VSC_ActiveHearingProtectionComponent.Cast(headgear.FindComponent(VSC_ActiveHearingProtectionComponent));
-		if (existingComp)
-		{
-			// Already has component, mark as processed
-			m_mProcessedItems.Set(itemID, true);
+		if (!m_bAutoAttach)
 			return;
-		}
 		
-		// Attach component to headgear
-		if (AttachComponentToItem(headgear))
+		// Attach both components to headgear
+		bool attachedAny = false;
+		attachedAny |= AttachProtection(headgear);
+		attachedAny |= AttachBOSSA(headgear);
+		
+		if (attachedAny)
 		{
 			m_mProcessedItems.Set(itemID, true);
-			Print("[VSC Manager] Attached hearing protection to headgear: " + headgear.GetName(), LogLevel.NORMAL);
+			Print("[VSC Manager] Attached components to headgear: " + headgear.GetName(), LogLevel.NORMAL);
 		}
 	}
 	
@@ -171,32 +171,45 @@ class VSC_HeadgearManagerComponent : ScriptedGameComponent
 	}
 	
 	//------------------------------------------------------------------------------------------------
-	// Attach VSC component to an item entity
+	// Attach Active Hearing Protection to an item entity
 	//------------------------------------------------------------------------------------------------
-	protected bool AttachComponentToItem(IEntity item)
+	protected bool AttachProtection(IEntity item)
 	{
 		if (!item)
 			return false;
 		
-		// Check if component already exists
 		VSC_ActiveHearingProtectionComponent existing = VSC_ActiveHearingProtectionComponent.Cast(item.FindComponent(VSC_ActiveHearingProtectionComponent));
 		if (existing)
 			return true; // Already attached
 		
-		// Create component class if needed
 		if (!m_ComponentClass)
 		{
 			m_ComponentClass = new VSC_ActiveHearingProtectionComponentClass();
 		}
 		
-		// Create and attach component using AddComponent
 		ScriptComponent component = ScriptComponent.Cast(item.CreateComponent(m_ComponentClass));
-		if (component)
+		return component != null;
+	}
+	
+	//------------------------------------------------------------------------------------------------
+	// Attach BOSSA component to an item entity
+	//------------------------------------------------------------------------------------------------
+	protected bool AttachBOSSA(IEntity item)
+	{
+		if (!item)
+			return false;
+		
+		VSC_BOSSAComponent existing = VSC_BOSSAComponent.Cast(item.FindComponent(VSC_BOSSAComponent));
+		if (existing)
+			return true; // Already attached
+		
+		if (!m_BOSSAClass)
 		{
-			return true;
+			m_BOSSAClass = new VSC_BOSSAComponentClass();
 		}
 		
-		return false;
+		ScriptComponent component = ScriptComponent.Cast(item.CreateComponent(m_BOSSAClass));
+		return component != null;
 	}
 	
 	//------------------------------------------------------------------------------------------------

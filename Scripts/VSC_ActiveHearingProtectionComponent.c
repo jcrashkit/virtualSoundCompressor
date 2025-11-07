@@ -69,15 +69,10 @@ class VSC_ActiveHearingProtectionComponent : ScriptComponent
 		m_PlayerCharacter = ChimeraCharacter.Cast(parent);
 		if (!m_PlayerCharacter) 
 		{
-			// Try to find the character in the hierarchy
-			m_PlayerCharacter = ChimeraCharacter.Cast(GetOwner().FindComponent(ChimeraCharacter));
+			// Last attempt: check if owner itself is the character
+			m_PlayerCharacter = ChimeraCharacter.Cast(GetOwner());
 			if (!m_PlayerCharacter)
-			{
-				// Last attempt: check if owner itself is the character
-				m_PlayerCharacter = ChimeraCharacter.Cast(GetOwner());
-				if (!m_PlayerCharacter)
-					return;
-			}
+				return;
 		}
 
 		// Only run this logic for the local player
